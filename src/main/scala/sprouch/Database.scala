@@ -23,9 +23,9 @@ import spray.json.JsValue
   * Supports CRUD operations on documents and attachments,
   * creating and querying views, bulk get, update, and delete operations.  
   */
-class Database private[sprouch](val name:String, pipelines:Pipelines) extends UriBuilder {
+class Database private[sprouch](val name:String, pipelines:Pipelines, config:Config) extends UriBuilder {
   import pipelines._
-  implicit val system = ActorSystem()
+  implicit val system = config.actorSystem
   import system.dispatcher // execution context for futures
 
   private def dbUri:String = dbUri(name)

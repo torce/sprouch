@@ -33,7 +33,7 @@ case class SprouchException(error:ErrorResponse) extends Exception
  * Class that handles the connection to CouchDB. It contains methods for creating, looking up and deleting databases.
  */
 class Couch(config:Config) extends UriBuilder {
-  implicit val system = ActorSystem()
+  implicit val system = config.actorSystem
   import system.dispatcher // execution context for futures
 
   private val pipelines = new Pipelines(config)
@@ -44,7 +44,7 @@ class Couch(config:Config) extends UriBuilder {
    * Creates a new database. Fails if the database already exists.
    */
   def createDb(dbName:String):Future[Database] = {
-    pipeline(Put(dbUri(dbName))).map(_ => new Database(dbName, pipelines))
+    pipeline(Put(dbUri(dbName))).map(_ => new Database(dbName, pipelines, config))
   }
   /**
    * Deletes a database and all containing documents.
@@ -56,7 +56,7 @@ class Couch(config:Config) extends UriBuilder {
    * Looks up a database by its name.
    */
   def getDb(dbName:String):Future[Database] = {
-    getDbPipeline(Get(dbUri(dbName))).map(_ => new Database(dbName, pipelines))
+    getDbPipeline(Get(dbUri(dbName))).map(_ => new Database(dbName, pipelines, config))
   }
 
 }
