@@ -71,6 +71,15 @@ class Database private[sprouch](val name:String, pipelines:Pipelines, config:Con
       crs.zip(docs).map { case (cr, doc) => doc.setRev(cr.rev) }
     })
   }
+
+  def bulkPutWithError[A:RootJsonFormat](docs:Seq[Document[A]]):Future[(Seq[RevedDocument[A]], Seq[ErrorBulkResponse])] = {
+    val p = pipeline[Seq[BulkResponse]]
+    p(Post(bulkUri, BulkPut(docs))).map(crs => {
+      val (revDocs, errors) = crs.zip(docs).partition(_._1.isInstanceOf[CreateResponse])
+      (revDocs.map { case (cr, doc) => doc.setRev(cr.asInstanceOf[CreateResponse].rev) },
+       errors.map { case (ebr, _) => ebr.asInstanceOf[ErrorBulkResponse] })
+    })
+  }
   
   /**
     * Deletes the entire database.

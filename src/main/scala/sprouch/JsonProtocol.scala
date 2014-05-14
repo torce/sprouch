@@ -50,7 +50,9 @@ object JsonProtocol extends DefaultJsonProtocol {
   case class AllDocsResponse[A](total_rows:Int, offset:Int, rows:Seq[AllDocsRow[A]])
   implicit def allDocsResponseFormat[A:RootJsonFormat] = jsonFormat3(AllDocsResponse[A])
   case class OkResponse(ok:Boolean)
-  case class CreateResponse(ok:Option[Boolean], id:String, rev:String)
+  trait BulkResponse
+  case class CreateResponse(ok:Option[Boolean], id:String, rev:String) extends BulkResponse
+  case class ErrorBulkResponse(id:String, error:String, reason:String) extends BulkResponse
   case class ErrorResponse(status:Int, body:Option[ErrorResponseBody])
   case class ErrorResponseBody(error:String, reason:String)
   case object Empty
@@ -62,7 +64,9 @@ object JsonProtocol extends DefaultJsonProtocol {
   implicit val getDbResponseFormat = jsonFormat10(GetDbResponse)
   implicit val okResponseFormat = jsonFormat1(OkResponse)
   implicit val createResponseFormat = jsonFormat3(CreateResponse)
+  implicit val errorBulkResponseFormat = jsonFormat3(ErrorBulkResponse)
   implicit val errorResponseFormat = jsonFormat2(ErrorResponseBody)
+  implicit val bulkResponseFormat = new BulkResponseFormat
   implicit def revedDocJsonFormat[A:RootJsonFormat]:RootJsonFormat[RevedDocument[A]] = new RevedDocFormat[A]
   implicit def newDocJsonFormat[A:RootJsonFormat]:RootJsonFormat[NewDocument[A]] = new NewDocFormat[A]
   implicit def documentFormat[A:RootJsonFormat]:RootJsonFormat[Document[A]] = new AnyDocFormat[A]
@@ -125,7 +129,7 @@ object JsonProtocol extends DefaultJsonProtocol {
           )
           JsObject(dataFields ++ docFields ++ otherFields(doc))
         }
-        case js => throw new Exception("data does not serialize to json object: " + js)
+        case js => throw new Exception("data does not serialize to value object: " + js)
       }
       
     }
@@ -137,12 +141,12 @@ object JsonProtocol extends DefaultJsonProtocol {
         val _id = stringFormat.read(fields("_id"))
         val attachments = fields.get("_attachments").toList.flatMap {
           case JsObject(as) => as.map { case (k,v) => k -> attachmentStubFormat.read(v) }
-          case _ => deserializationError("json array expected")
+          case _ => deserializationError("value array expected")
         }.toMap
         val data =  dataFormat.read(o)
         makeB(fields, _id, data, attachments)
       }
-      case _ => deserializationError("json object expected")
+      case _ => deserializationError("value object expected")
     }
   }
   
@@ -166,7 +170,19 @@ object JsonProtocol extends DefaultJsonProtocol {
   
   case class BulkPut[A](docs:Seq[Document[A]])
   implicit def bulkPutFormat[A:RootJsonFormat] = jsonFormat1(BulkPut[A])
-  
+
+  class BulkResponseFormat extends RootJsonFormat[BulkResponse] {
+    override def read(value: JsValue): BulkResponse = value match {
+      case o:JsObject if o.fields.contains("error") =>
+        o.convertTo[ErrorBulkResponse]
+      case o:JsObject =>
+        o.convertTo[CreateResponse]
+      case _ => deserializationError("value object expected")
+    }
+
+    override def write(obj: BulkResponse): JsValue = obj.toJson
+  }
+
   implicit val nothingFormat = new JsonFormat[Nothing] {
     def read(js:JsValue) = throw new Exception("fields of type nothing should never be used")
     def write(n:Nothing) = throw new Exception("fields of type nothing should never be used")
